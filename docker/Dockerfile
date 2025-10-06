@@ -1,76 +1,44 @@
-# Use Python 3.9 with CUDA support as base image
-FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-devel
+# Multi-stage build for smaller final image
+FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime as base
 
 # Set environment variables
-ENV DEBIAN_FRONTEND=noninteractive
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PIP_NO_CACHE_DIR=1
-ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Install system dependencies in single layer
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    libsndfile1 \
+    git \
+    wget \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    # Audio processing libraries
-    ffmpeg \
-    libsndfile1 \
-    libsox-dev \
-    sox \
-    # Git for cloning models
-    git \
-    # Build tools
-    build-essential \
-    cmake \
-    # Audio codecs
-    libavcodec-extra \
-    libavformat-dev \
-    libavutil-dev \
-    libswscale-dev \
-    libswresample-dev \
-    # Other utilities
-    wget \
-    curl \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+# Copy and install minimal requirements
+COPY requirements-docker.txt ./
+RUN pip install --no-cache-dir -r requirements-docker.txt \
+    && python -c "import torch; print(f'PyTorch {torch.__version__} installed')" \
+    && rm -rf /tmp/* /root/.cache/pip/*
 
-# Upgrade pip and install wheel
-RUN pip install --upgrade pip setuptools wheel
+# Copy only necessary application files
+COPY ../requirements.txt ../WARP.md ./
+COPY ../*.py ./
 
-# Copy requirements first for better Docker layer caching
-COPY ../requirements.txt .
-
-# Install Python dependencies
-RUN pip install -r requirements.txt
-
-# Install additional system-specific packages for audio processing
-RUN pip install \
-    torch-audio-tagging \
-    asteroid-filterbanks \
-    pesq \
-    pystoi
-
-# Create directories for the application
-RUN mkdir -p /app/speakers \
-    && mkdir -p /app/output \
-    && mkdir -p /app/transcription_output \
-    && mkdir -p /app/pretrained_models
-
-# Copy the application code
-COPY ../ .
-
-# Create a non-root user for security
-RUN groupadd -r appuser && useradd -r -g appuser appuser \
+# Create directories and user in single layer
+RUN mkdir -p /app/{speakers,output,transcription_output,pretrained_models} \
+    && groupadd -r appuser && useradd -r -g appuser appuser \
+    && echo "HUGGING_FACE_ACCESS_TOKEN=your_hugging_face_token_here" > .env.template \
     && chown -R appuser:appuser /app
 
 # Switch to non-root user
 USER appuser
-
-# Create .env template file
-RUN echo "# Copy this file to .env and fill in your tokens" > .env.template \
-    && echo "HUGGING_FACE_ACCESS_TOKEN=your_hugging_face_token_here" >> .env.template
 
 # Expose port for potential web interface (future enhancement)
 EXPOSE 8000

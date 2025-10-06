@@ -1,0 +1,95 @@
+name: Test Docker Build
+
+on:
+  pull_request:
+    branches: [ main, master, develop ]
+    paths:
+      - 'docker/**'
+      - '*.py'
+      - 'requirements.txt'
+      - '.github/workflows/docker-test.yml'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  test-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dockerfile: Dockerfile.cpu
+            tag: test-cpu
+            name: "CPU Test Build"
+          # Only test CPU version for PRs to save resources
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Free up disk space
+      run: |
+        echo "Available disk space before cleanup:"
+        df -h
+        
+        # Remove unnecessary packages
+        sudo apt-get autoremove -y
+        sudo apt-get autoclean -y
+        
+        # Remove large packages we don't need
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /opt/hostedtoolcache/CodeQL
+        
+        # Clean docker
+        docker system prune -af
+        
+        echo "Available disk space after cleanup:"
+        df -h
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Test build Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./docker/${{ matrix.dockerfile }}
+        platforms: linux/amd64
+        push: false
+        tags: speaker-profiles:${{ matrix.tag }}
+        cache-from: type=gha,scope=test-${{ matrix.tag }}
+        cache-to: type=gha,mode=max,scope=test-${{ matrix.tag }}
+
+    - name: Test image
+      run: |
+        docker run --rm speaker-profiles:${{ matrix.tag }} python -c "
+        import sys
+        print(f'Python version: {sys.version}')
+        
+        try:
+            import torch
+            print(f'PyTorch version: {torch.__version__}')
+        except ImportError as e:
+            print(f'PyTorch import failed: {e}')
+            sys.exit(1)
+        
+        try:
+            import numpy
+            print(f'NumPy version: {numpy.__version__}')
+        except ImportError as e:
+            print(f'NumPy import failed: {e}')
+            sys.exit(1)
+        
+        print('✅ Basic dependencies test passed!')
+        "
+
+    - name: Image size check
+      run: |
+        docker images speaker-profiles:${{ matrix.tag }} --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
