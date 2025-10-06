@@ -28,7 +28,7 @@ RUN pip install --no-cache-dir -r requirements-docker.txt \
     && rm -rf /tmp/* /root/.cache/pip/*
 
 # Copy necessary application files from root
-COPY requirements.txt WARP.md ./
+COPY requirements.txt ./
 COPY *.py ./
 
 # Create directories and user in single layer
