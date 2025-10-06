@@ -1,0 +1,89 @@
+# CPU-only version - Use Python 3.9 without CUDA
+FROM python:3.9-slim
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PIP_NO_CACHE_DIR=1
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV CUDA_VISIBLE_DEVICES=""
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    # Audio processing libraries
+    ffmpeg \
+    libsndfile1 \
+    libsox-dev \
+    sox \
+    # Git for cloning models
+    git \
+    # Build tools
+    build-essential \
+    cmake \
+    # Audio codecs
+    libavcodec-extra \
+    # Other utilities
+    wget \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Upgrade pip and install wheel
+RUN pip install --upgrade pip setuptools wheel
+
+# Install CPU-only PyTorch first
+RUN pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+# Copy requirements first for better Docker layer caching
+COPY ../requirements.txt .
+
+# Install Python dependencies (excluding GPU-specific packages)
+RUN pip install -r requirements.txt
+
+# Create directories for the application
+RUN mkdir -p /app/speakers \
+    && mkdir -p /app/output \
+    && mkdir -p /app/transcription_output \
+    && mkdir -p /app/pretrained_models
+
+# Copy the application code
+COPY ../ .
+
+# Create a non-root user for security
+RUN groupadd -r appuser && useradd -r -g appuser appuser \
+    && chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
+
+# Create .env template file
+RUN echo "# Copy this file to .env and fill in your tokens" > .env.template \
+    && echo "HUGGING_FACE_ACCESS_TOKEN=your_hugging_face_token_here" >> .env.template
+
+# Expose port for potential web interface
+EXPOSE 8000
+
+# Set default command
+CMD ["python", "--version"]
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD python -c "import torch, speechbrain, whisper, pyannote.audio; print('CPU version working')" || exit 1
+
+# Labels for metadata
+LABEL maintainer="Speaker-Profiles"
+LABEL description="Automatic Speaker Recognition and Profiling System"
+LABEL version="1.0-cpu"
+LABEL org.opencontainers.image.source="https://github.com/JustinTheGreat/Speaker-Profiles"
+LABEL org.opencontainers.image.description="AI-powered speaker identification and transcription system"
+LABEL org.opencontainers.image.licenses="MIT"
+
+# Environment variables for model caching
+ENV TRANSFORMERS_CACHE=/app/pretrained_models/transformers
+ENV HF_HOME=/app/pretrained_models/huggingface
+ENV SPEECHBRAIN_CACHE=/app/pretrained_models/speechbrain

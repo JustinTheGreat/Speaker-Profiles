@@ -29,7 +29,7 @@ class SpeechBrainSpeakerEmbeddingExtractor:
         # Load diarization pipeline (using pyannote for speaker segmentation)
         self.diarization_pipeline = Pipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",
-            use_auth_token=self.hf_token
+            token=self.hf_token
         )
         
         # Setup device

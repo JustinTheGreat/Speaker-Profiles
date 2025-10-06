@@ -1,2 +1,23 @@
 .env
 *.pyc
+*venv
+# Ignore speakers and models
+speakers/
+pretrained_models/
+
+# Ignore audio files
+*.mp3
+*.wav
+*.flac
+*.aac
+*.ogg
+*.m4a
+*.wma
+*.aiff
+*.ape
+*.opus
+*.pcm
+*.raw
+*.mid
+*.midi
+WARP.md

@@ -1,0 +1,113 @@
+version: '3.8'
+
+services:
+  speaker-profiles:
+    build: 
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: speaker-profiles:latest
+    container_name: speaker-profiles-app
+    
+    # Environment variables
+    environment:
+      - PYTHONPATH=/app
+      - TRANSFORMERS_CACHE=/app/pretrained_models/transformers
+      - HF_HOME=/app/pretrained_models/huggingface
+      - SPEECHBRAIN_CACHE=/app/pretrained_models/speechbrain
+    
+    # Load environment variables from .env file
+    env_file:
+      - ../.env
+    
+    # Volume mounts for persistent data and easy development
+    volumes:
+      # Persistent speaker database
+      - ../speakers:/app/speakers
+      # Output directories
+      - ../output:/app/output
+      - ../transcription_output:/app/transcription_output
+      # Model cache (avoid re-downloading)
+      - ../pretrained_models:/app/pretrained_models
+      # Audio files directory (create this on your host)
+      - ../audio_files:/app/audio_files:ro
+      # Development: mount source code for live editing
+      - ../:/app:ro
+    
+    # GPU support (requires nvidia-docker)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    
+    # Network configuration
+    ports:
+      - "8000:8000"  # For future web interface
+    
+    # Working directory
+    working_dir: /app
+    
+    # Default command - override as needed
+    command: ["python", "--version"]
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import torch, speechbrain, whisper, pyannote.audio; print('OK')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # CPU-only version for systems without GPU
+  speaker-profiles-cpu:
+    build: 
+      context: ..
+      dockerfile: docker/Dockerfile.cpu
+    image: speaker-profiles:cpu
+    container_name: speaker-profiles-app-cpu
+    profiles:
+      - cpu-only
+    
+    environment:
+      - PYTHONPATH=/app
+      - CUDA_VISIBLE_DEVICES=""
+      - TRANSFORMERS_CACHE=/app/pretrained_models/transformers
+      - HF_HOME=/app/pretrained_models/huggingface
+      - SPEECHBRAIN_CACHE=/app/pretrained_models/speechbrain
+    
+    env_file:
+      - ../.env
+    
+    volumes:
+      - ../speakers:/app/speakers
+      - ../output:/app/output
+      - ../transcription_output:/app/transcription_output
+      - ../pretrained_models:/app/pretrained_models
+      - ../audio_files:/app/audio_files:ro
+      - ../:/app:ro
+    
+    ports:
+      - "8000:8000"
+    
+    working_dir: /app
+    command: ["python", "--version"]
+    restart: unless-stopped
+
+# Named volumes for better management
+volumes:
+  speaker_data:
+    driver: local
+  model_cache:
+    driver: local
+  output_data:
+    driver: local
+
+# Networks
+networks:
+  default:
+    driver: bridge
