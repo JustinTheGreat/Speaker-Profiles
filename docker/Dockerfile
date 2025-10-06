@@ -21,15 +21,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Set working directory
 WORKDIR /app
 
-# Copy and install minimal requirements
-COPY requirements-docker.txt ./
+# Copy and install minimal requirements from docker subdirectory
+COPY docker/requirements-docker.txt ./
 RUN pip install --no-cache-dir -r requirements-docker.txt \
     && python -c "import torch; print(f'PyTorch {torch.__version__} installed')" \
     && rm -rf /tmp/* /root/.cache/pip/*
 
-# Copy only necessary application files
-COPY ../requirements.txt ../WARP.md ./
-COPY ../*.py ./
+# Copy necessary application files from root
+COPY requirements.txt WARP.md ./
+COPY *.py ./
 
 # Create directories and user in single layer
 RUN mkdir -p /app/{speakers,output,transcription_output,pretrained_models} \
