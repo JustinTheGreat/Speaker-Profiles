@@ -1,156 +1,192 @@
 #!/bin/bash
-# Build script for Speaker-Profiles Docker images
+# Speaker-Profiles Docker Build Script for Linux/macOS
+# This script builds the Docker images for the Speaker-Profiles project
 
 set -e  # Exit on any error
+
+# Default values
+VERSION="gpu"
+NO_CACHE=false
+VERBOSE=false
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-# Default values
-BUILD_GPU=true
-BUILD_CPU=true
-BUILD_ARGS=""
-PUSH=false
-TAG_PREFIX=""
-
 # Function to print colored output
-print_status() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
-
-print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
-
-print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
-
-print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+print_color() {
+    local color=$1
+    local message=$2
+    echo -e "${color}${message}${NC}"
 }
 
 # Function to show usage
-show_usage() {
+usage() {
+    print_color $GREEN "🐳 Speaker-Profiles Docker Build Script"
+    print_color $GREEN "======================================"
+    echo ""
     echo "Usage: $0 [OPTIONS]"
     echo ""
-    echo "Build Docker images for Speaker-Profiles"
-    echo ""
     echo "Options:"
-    echo "  -g, --gpu-only      Build only GPU version"
-    echo "  -c, --cpu-only      Build only CPU version"
-    echo "  -t, --tag PREFIX    Tag prefix (default: speaker-profiles)"
-    echo "  -p, --push          Push images to registry after building"
-    echo "  --build-arg ARG     Pass build argument to docker build"
-    echo "  -h, --help          Show this help message"
+    echo "  -v, --version VERSION    Build version: gpu, cpu, or all (default: gpu)"
+    echo "  -n, --no-cache          Build without using cache"
+    echo "  --verbose               Show verbose build output"
+    echo "  -h, --help              Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0                  # Build both GPU and CPU versions"
-    echo "  $0 --gpu-only       # Build only GPU version"
-    echo "  $0 --cpu-only       # Build only CPU version"
-    echo "  $0 --tag myrepo/speaker-profiles --push"
+    echo "  $0                      # Build GPU version"
+    echo "  $0 -v cpu               # Build CPU version"
+    echo "  $0 -v all --no-cache    # Build all versions without cache"
 }
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -g|--gpu-only)
-            BUILD_CPU=false
-            shift
-            ;;
-        -c|--cpu-only)
-            BUILD_GPU=false
-            shift
-            ;;
-        -t|--tag)
-            TAG_PREFIX="$2"
+        -v|--version)
+            VERSION="$2"
             shift 2
             ;;
-        -p|--push)
-            PUSH=true
+        -n|--no-cache)
+            NO_CACHE=true
             shift
             ;;
-        --build-arg)
-            BUILD_ARGS="$BUILD_ARGS --build-arg $2"
-            shift 2
+        --verbose)
+            VERBOSE=true
+            shift
             ;;
         -h|--help)
-            show_usage
+            usage
             exit 0
             ;;
         *)
-            print_error "Unknown option: $1"
-            show_usage
+            print_color $RED "❌ Unknown option: $1"
+            usage
             exit 1
             ;;
     esac
 done
 
-# Set default tag prefix if not specified
-if [ -z "$TAG_PREFIX" ]; then
-    TAG_PREFIX="speaker-profiles"
-fi
+print_color $GREEN "🐳 Speaker-Profiles Docker Build Script"
+print_color $GREEN "======================================"
 
-# Check if we're in the docker directory
-if [ ! -f "Dockerfile" ] || [ ! -f "docker-compose.yml" ]; then
-    print_error "Please run this script from the docker/ directory"
+# Check if Docker is installed and running
+if ! command -v docker &> /dev/null; then
+    print_color $RED "❌ Docker is not installed"
+    print_color $YELLOW "Please install Docker and ensure it's running"
     exit 1
 fi
 
-print_status "Building Speaker-Profiles Docker images..."
-print_status "GPU version: $BUILD_GPU"
-print_status "CPU version: $BUILD_CPU"
-print_status "Tag prefix: $TAG_PREFIX"
-
-# Build GPU version
-if [ "$BUILD_GPU" = true ]; then
-    print_status "Building GPU version..."
-    if docker build $BUILD_ARGS -t ${TAG_PREFIX}:latest -f Dockerfile .; then
-        print_success "GPU version built successfully: ${TAG_PREFIX}:latest"
-        
-        if [ "$PUSH" = true ]; then
-            print_status "Pushing GPU version..."
-            docker push ${TAG_PREFIX}:latest
-            print_success "GPU version pushed successfully"
-        fi
-    else
-        print_error "Failed to build GPU version"
-        exit 1
-    fi
+if ! docker info &> /dev/null; then
+    print_color $RED "❌ Docker is not running"
+    print_color $YELLOW "Please start Docker and try again"
+    exit 1
 fi
 
-# Build CPU version
-if [ "$BUILD_CPU" = true ]; then
-    print_status "Building CPU version..."
-    if docker build $BUILD_ARGS -t ${TAG_PREFIX}:latest-cpu -f Dockerfile.cpu .; then
-        print_success "CPU version built successfully: ${TAG_PREFIX}:latest-cpu"
-        
-        if [ "$PUSH" = true ]; then
-            print_status "Pushing CPU version..."
-            docker push ${TAG_PREFIX}:latest-cpu
-            print_success "CPU version pushed successfully"
-        fi
-    else
-        print_error "Failed to build CPU version"
-        exit 1
-    fi
+DOCKER_VERSION=$(docker --version)
+print_color $CYAN "✅ Docker detected: $DOCKER_VERSION"
+
+# Check if we're in the correct directory
+if [[ ! -f "Dockerfile" ]]; then
+    print_color $RED "❌ Dockerfile not found in current directory"
+    print_color $YELLOW "Please run this script from the docker folder"
+    exit 1
 fi
 
-print_success "Build process completed!"
+# Prepare build arguments
+BUILD_ARGS=()
+if [[ "$NO_CACHE" == true ]]; then
+    BUILD_ARGS+=(--no-cache)
+fi
+if [[ "$VERBOSE" == true ]]; then
+    BUILD_ARGS+=(--progress=plain)
+fi
 
-# Show next steps
-echo ""
-echo "Next steps:"
-echo "  1. Test the images:"
-echo "     docker run --rm ${TAG_PREFIX}:latest python --version"
-echo "     docker run --rm ${TAG_PREFIX}:latest-cpu python --version"
-echo ""
-echo "  2. Run with docker-compose:"
-echo "     docker-compose up"
-echo ""
-echo "  3. Process an audio file:"
-echo "     docker-compose exec speaker-profiles python auto_speaker_tagging_system.py /app/audio_files/your_audio.wav"
+# Function to build a Docker image
+build_docker_image() {
+    local image_name=$1
+    local dockerfile_name=$2
+    local description=$3
+    
+    print_color $YELLOW "🏗️  Building $description..."
+    print_color $CYAN "Image: $image_name"
+    print_color $CYAN "Dockerfile: $dockerfile_name"
+    
+    if docker build "${BUILD_ARGS[@]}" -f "$dockerfile_name" -t "$image_name" .; then
+        print_color $GREEN "✅ Successfully built $image_name"
+        return 0
+    else
+        print_color $RED "❌ Failed to build $image_name"
+        return 1
+    fi
+}
+
+# Main build logic
+SUCCESS=true
+
+case "${VERSION,,}" in  # Convert to lowercase
+    "gpu")
+        print_color $CYAN "🚀 Building GPU version only..."
+        if ! build_docker_image "speaker-profiles:gpu" "Dockerfile" "GPU-enabled version"; then
+            SUCCESS=false
+        fi
+        ;;
+    "cpu")
+        print_color $CYAN "🖥️  Building CPU version only..."
+        if ! build_docker_image "speaker-profiles:cpu" "Dockerfile.cpu" "CPU-only version"; then
+            SUCCESS=false
+        fi
+        ;;
+    "all")
+        print_color $CYAN "🔄 Building all versions..."
+        
+        # Build GPU version
+        GPU_SUCCESS=true
+        if ! build_docker_image "speaker-profiles:gpu" "Dockerfile" "GPU-enabled version"; then
+            GPU_SUCCESS=false
+        fi
+        
+        # Build CPU version
+        CPU_SUCCESS=true
+        if ! build_docker_image "speaker-profiles:cpu" "Dockerfile.cpu" "CPU-only version"; then
+            CPU_SUCCESS=false
+        fi
+        
+        if [[ "$GPU_SUCCESS" == false ]] || [[ "$CPU_SUCCESS" == false ]]; then
+            SUCCESS=false
+        fi
+        ;;
+    *)
+        print_color $RED "❌ Invalid version specified: $VERSION"
+        print_color $YELLOW "Valid options: gpu, cpu, all"
+        exit 1
+        ;;
+esac
+
+# Show results
+print_color $GREEN "\n🎯 Build Summary"
+print_color $GREEN "==============="
+
+if [[ "$SUCCESS" == true ]]; then
+    print_color $GREEN "✅ All builds completed successfully!"
+    
+    # Show built images
+    print_color $CYAN "\n📋 Available images:"
+    if command -v docker &> /dev/null; then
+        docker images speaker-profiles --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}"
+    fi
+    
+    print_color $GREEN "\n🚀 Next steps:"
+    print_color $YELLOW "1. Copy .env.docker and set your HUGGING_FACE_ACCESS_TOKEN"
+    print_color $YELLOW "2. Create directories: mkdir -p ../audio ../speakers ../output"
+    print_color $YELLOW "3. Run with: docker-compose up speaker-profiles-gpu"
+    print_color $YELLOW "   Or CPU version: docker-compose up speaker-profiles-cpu"
+    
+else
+    print_color $RED "❌ One or more builds failed!"
+    exit 1
+fi
+
+print_color $GREEN "\n🎉 Build script completed!"

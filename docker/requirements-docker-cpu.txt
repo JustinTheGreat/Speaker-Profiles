@@ -1,4 +1,4 @@
-# Docker-specific requirements for Speaker-Profiles (GPU version)
+# Docker-specific requirements for Speaker-Profiles (CPU version)
 # Core ML/AI Libraries (PyTorch installed separately in Docker)
 numpy>=1.21.0,<1.25.0
 scikit-learn>=1.0.0,<1.4.0
@@ -31,9 +31,9 @@ pydub>=0.25.0
 fastapi>=0.68.0
 uvicorn>=0.15.0
 
-# For model optimization
+# For model optimization (CPU version)
 onnx>=1.12.0
-onnxruntime-gpu>=1.12.0
+onnxruntime>=1.12.0
 
 # Utilities
 tqdm>=4.64.0

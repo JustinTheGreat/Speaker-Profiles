@@ -1,78 +1,83 @@
-# CPU-only version - Use Python 3.9 without CUDA
-FROM python:3.9-slim
+# Speaker-Profiles Docker Image - CPU Only
+# CPU-only Dockerfile for systems without GPU support
+FROM python:3.9-slim-bullseye
 
-# Set environment variables
-ENV DEBIAN_FRONTEND=noninteractive \
-    PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    CUDA_VISIBLE_DEVICES=""
-
-# Install system dependencies and PyTorch in single layer
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    libsndfile1 \
-    git \
-    wget \
-    curl \
-    ca-certificates \
-    build-essential \
-    && pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu \
-    && apt-get remove -y build-essential \
-    && apt-get autoremove -y \
-    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
 
 # Set working directory
 WORKDIR /app
 
-# Copy minimal requirements for better Docker layer caching
-COPY requirements-docker.txt ./
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    wget \
+    curl \
+    build-essential \
+    cmake \
+    pkg-config \
+    libsndfile1 \
+    libsndfile1-dev \
+    ffmpeg \
+    sox \
+    libsox-fmt-all \
+    libsox-dev \
+    libasound2-dev \
+    portaudio19-dev \
+    libportaudio2 \
+    libportaudiocpp0 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies (excluding GPU-specific packages)
-RUN pip install --no-cache-dir -r requirements-docker.txt \
-    && rm -rf /tmp/* /root/.cache/pip/*
+# Set Python environment variables
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
 
-# Create directories for the application
-RUN mkdir -p /app/speakers \
-    && mkdir -p /app/output \
-    && mkdir -p /app/transcription_output \
-    && mkdir -p /app/pretrained_models
+# Force CPU-only mode for PyTorch
+ENV CUDA_VISIBLE_DEVICES=""
 
-# Copy the application code
-COPY requirements.txt ./
-COPY *.py ./
+# Install PyTorch CPU-only version
+RUN pip install torch==2.1.0+cpu torchvision==0.16.0+cpu torchaudio==2.1.0+cpu --index-url https://download.pytorch.org/whl/cpu
 
-# Create a non-root user for security
-RUN groupadd -r appuser && useradd -r -g appuser appuser \
-    && chown -R appuser:appuser /app
+# Copy requirements first for better Docker layer caching
+COPY requirements-docker-cpu.txt /app/requirements.txt
 
-# Switch to non-root user
-USER appuser
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Create .env template file
-RUN echo "# Copy this file to .env and fill in your tokens" > .env.template \
-    && echo "HUGGING_FACE_ACCESS_TOKEN=your_hugging_face_token_here" >> .env.template
+# Create directories for model caching
+RUN mkdir -p /app/pretrained_models/transformers && \
+    mkdir -p /app/pretrained_models/huggingface && \
+    mkdir -p /app/pretrained_models/speechbrain && \
+    mkdir -p /app/speakers && \
+    mkdir -p /app/audio && \
+    mkdir -p /app/output
 
-# Expose port for potential web interface
-EXPOSE 8000
-
-# Set default command
-CMD ["python", "--version"]
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "import torch, speechbrain, whisper, pyannote.audio; print('CPU version working')" || exit 1
-
-# Labels for metadata
-LABEL maintainer="Speaker-Profiles"
-LABEL description="Automatic Speaker Recognition and Profiling System"
-LABEL version="1.0-cpu"
-LABEL org.opencontainers.image.source="https://github.com/JustinTheGreat/Speaker-Profiles"
-LABEL org.opencontainers.image.description="AI-powered speaker identification and transcription system"
-LABEL org.opencontainers.image.licenses="MIT"
-
-# Environment variables for model caching
+# Set environment variables for model caching
 ENV TRANSFORMERS_CACHE=/app/pretrained_models/transformers
 ENV HF_HOME=/app/pretrained_models/huggingface
 ENV SPEECHBRAIN_CACHE=/app/pretrained_models/speechbrain
+
+# Copy project files
+COPY *.py /app/
+COPY .env.docker /app/.env
+
+# Create a non-root user for security
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+RUN chown -R appuser:appuser /app
+USER appuser
+
+# Expose port for potential web interface (optional)
+EXPOSE 8000
+
+# Set default command
+CMD ["python", "simple_auto_tagging_example.py"]
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD python -c "import torch; import speechbrain; import pyannote.audio; print('OK')" || exit 1
+
+# Labels for better image management
+LABEL maintainer="Speaker-Profiles Project"
+LABEL description="CPU-only Docker image for automatic speaker recognition and profiling"
+LABEL version="1.0"
+LABEL gpu.required="false"

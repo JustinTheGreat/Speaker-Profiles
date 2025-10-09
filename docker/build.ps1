@@ -1,161 +1,127 @@
-# Build script for Speaker-Profiles Docker images (PowerShell)
+# Speaker-Profiles Docker Build Script for Windows
+# This script builds the Docker images for the Speaker-Profiles project
 
 param(
-    [switch]$GpuOnly,
-    [switch]$CpuOnly,
-    [string]$Tag = "speaker-profiles",
-    [switch]$Push,
-    [string[]]$BuildArg = @(),
-    [switch]$Help
+    [string]$Version = "gpu",  # Options: gpu, cpu, all
+    [switch]$NoCache,
+    [switch]$Verbose
 )
 
+# Set error action preference
+$ErrorActionPreference = "Stop"
+
 # Colors for output
-$Red = "Red"
-$Green = "Green"
-$Yellow = "Yellow"
-$Blue = "Blue"
-
-function Write-Status {
-    param([string]$Message)
-    Write-Host "[INFO] $Message" -ForegroundColor $Blue
+function Write-ColorOutput($ForegroundColor, $Message) {
+    Write-Host $Message -ForegroundColor $ForegroundColor
 }
 
-function Write-Success {
-    param([string]$Message)
-    Write-Host "[SUCCESS] $Message" -ForegroundColor $Green
-}
+Write-ColorOutput "Green" "🐳 Speaker-Profiles Docker Build Script"
+Write-ColorOutput "Green" "======================================"
 
-function Write-Warning {
-    param([string]$Message)
-    Write-Host "[WARNING] $Message" -ForegroundColor $Yellow
+# Check if Docker is installed and running
+try {
+    $dockerVersion = docker --version
+    Write-ColorOutput "Cyan" "✅ Docker detected: $dockerVersion"
 }
-
-function Write-Error {
-    param([string]$Message)
-    Write-Host "[ERROR] $Message" -ForegroundColor $Red
-}
-
-function Show-Usage {
-    Write-Host "Usage: .\build.ps1 [OPTIONS]"
-    Write-Host ""
-    Write-Host "Build Docker images for Speaker-Profiles"
-    Write-Host ""
-    Write-Host "Options:"
-    Write-Host "  -GpuOnly            Build only GPU version"
-    Write-Host "  -CpuOnly            Build only CPU version"
-    Write-Host "  -Tag PREFIX         Tag prefix (default: speaker-profiles)"
-    Write-Host "  -Push               Push images to registry after building"
-    Write-Host "  -BuildArg ARG       Pass build argument to docker build"
-    Write-Host "  -Help               Show this help message"
-    Write-Host ""
-    Write-Host "Examples:"
-    Write-Host "  .\build.ps1                                    # Build both GPU and CPU versions"
-    Write-Host "  .\build.ps1 -GpuOnly                          # Build only GPU version"
-    Write-Host "  .\build.ps1 -CpuOnly                          # Build only CPU version"
-    Write-Host "  .\build.ps1 -Tag 'myrepo/speaker-profiles' -Push"
-}
-
-# Show help if requested
-if ($Help) {
-    Show-Usage
-    exit 0
-}
-
-# Set build flags
-$BuildGpu = $true
-$BuildCpu = $true
-
-if ($GpuOnly) {
-    $BuildCpu = $false
-}
-if ($CpuOnly) {
-    $BuildGpu = $false
-}
-
-# Check if we're in the docker directory
-if (!(Test-Path "Dockerfile") -or !(Test-Path "docker-compose.yml")) {
-    Write-Error "Please run this script from the docker/ directory"
+catch {
+    Write-ColorOutput "Red" "❌ Docker is not installed or not running"
+    Write-ColorOutput "Yellow" "Please install Docker Desktop and ensure it's running"
     exit 1
 }
 
-Write-Status "Building Speaker-Profiles Docker images..."
-Write-Status "GPU version: $BuildGpu"
-Write-Status "CPU version: $BuildCpu"
-Write-Status "Tag prefix: $Tag"
+# Check if we're in the correct directory
+if (-not (Test-Path "Dockerfile")) {
+    Write-ColorOutput "Red" "❌ Dockerfile not found in current directory"
+    Write-ColorOutput "Yellow" "Please run this script from the docker folder"
+    exit 1
+}
 
 # Prepare build arguments
-$BuildArgString = ""
-if ($BuildArg.Count -gt 0) {
-    foreach ($arg in $BuildArg) {
-        $BuildArgString += "--build-arg $arg "
-    }
+$buildArgs = @()
+if ($NoCache) {
+    $buildArgs += "--no-cache"
+}
+if ($Verbose) {
+    $buildArgs += "--progress=plain"
 }
 
-# Build GPU version
-if ($BuildGpu) {
-    Write-Status "Building GPU version..."
+# Function to build a Docker image
+function Build-DockerImage {
+    param(
+        [string]$ImageName,
+        [string]$DockerfileName,
+        [string]$Description
+    )
     
-    $buildCmd = "docker build $BuildArgString -t ${Tag}:latest -f Dockerfile ."
-    Write-Status "Executing: $buildCmd"
+    Write-ColorOutput "Yellow" "🏗️  Building $Description..."
+    Write-ColorOutput "Cyan" "Image: $ImageName"
+    Write-ColorOutput "Cyan" "Dockerfile: $DockerfileName"
     
-    $result = Invoke-Expression $buildCmd
-    if ($LASTEXITCODE -eq 0) {
-        Write-Success "GPU version built successfully: ${Tag}:latest"
+    $buildCommand = @("build") + $buildArgs + @("-f", $DockerfileName, "-t", $ImageName, ".")
+    
+    try {
+        & docker $buildCommand
+        Write-ColorOutput "Green" "✅ Successfully built $ImageName"
+    }
+    catch {
+        Write-ColorOutput "Red" "❌ Failed to build $ImageName"
+        Write-ColorOutput "Red" $_.Exception.Message
+        return $false
+    }
+    
+    return $true
+}
+
+# Main build logic
+$success = $true
+
+switch ($Version.ToLower()) {
+    "gpu" {
+        Write-ColorOutput "Cyan" "🚀 Building GPU version only..."
+        $success = Build-DockerImage "speaker-profiles:gpu" "Dockerfile" "GPU-enabled version"
+    }
+    "cpu" {
+        Write-ColorOutput "Cyan" "🖥️  Building CPU version only..."
+        $success = Build-DockerImage "speaker-profiles:cpu" "Dockerfile.cpu" "CPU-only version"
+    }
+    "all" {
+        Write-ColorOutput "Cyan" "🔄 Building all versions..."
         
-        if ($Push) {
-            Write-Status "Pushing GPU version..."
-            docker push "${Tag}:latest"
-            if ($LASTEXITCODE -eq 0) {
-                Write-Success "GPU version pushed successfully"
-            } else {
-                Write-Error "Failed to push GPU version"
-                exit 1
-            }
-        }
-    } else {
-        Write-Error "Failed to build GPU version"
+        # Build GPU version
+        $gpuSuccess = Build-DockerImage "speaker-profiles:gpu" "Dockerfile" "GPU-enabled version"
+        
+        # Build CPU version
+        $cpuSuccess = Build-DockerImage "speaker-profiles:cpu" "Dockerfile.cpu" "CPU-only version"
+        
+        $success = $gpuSuccess -and $cpuSuccess
+    }
+    default {
+        Write-ColorOutput "Red" "❌ Invalid version specified: $Version"
+        Write-ColorOutput "Yellow" "Valid options: gpu, cpu, all"
         exit 1
     }
 }
 
-# Build CPU version
-if ($BuildCpu) {
-    Write-Status "Building CPU version..."
+# Show results
+Write-ColorOutput "Green" "`n🎯 Build Summary"
+Write-ColorOutput "Green" "==============="
+
+if ($success) {
+    Write-ColorOutput "Green" "✅ All builds completed successfully!"
     
-    $buildCmd = "docker build $BuildArgString -t ${Tag}:latest-cpu -f Dockerfile.cpu ."
-    Write-Status "Executing: $buildCmd"
+    # Show built images
+    Write-ColorOutput "Cyan" "`n📋 Available images:"
+    docker images speaker-profiles --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}"
     
-    $result = Invoke-Expression $buildCmd
-    if ($LASTEXITCODE -eq 0) {
-        Write-Success "CPU version built successfully: ${Tag}:latest-cpu"
-        
-        if ($Push) {
-            Write-Status "Pushing CPU version..."
-            docker push "${Tag}:latest-cpu"
-            if ($LASTEXITCODE -eq 0) {
-                Write-Success "CPU version pushed successfully"
-            } else {
-                Write-Error "Failed to push CPU version"
-                exit 1
-            }
-        }
-    } else {
-        Write-Error "Failed to build CPU version"
-        exit 1
-    }
+    Write-ColorOutput "Green" "`n🚀 Next steps:"
+    Write-ColorOutput "Yellow" "1. Copy .env.docker and set your HUGGING_FACE_ACCESS_TOKEN"
+    Write-ColorOutput "Yellow" "2. Create directories: mkdir ../audio ../speakers ../output"
+    Write-ColorOutput "Yellow" "3. Run with: docker-compose up speaker-profiles-gpu"
+    Write-ColorOutput "Yellow" "   Or CPU version: docker-compose up speaker-profiles-cpu"
+    
+} else {
+    Write-ColorOutput "Red" "❌ One or more builds failed!"
+    exit 1
 }
 
-Write-Success "Build process completed!"
-
-# Show next steps
-Write-Host ""
-Write-Host "Next steps:"
-Write-Host "  1. Test the images:"
-Write-Host "     docker run --rm ${Tag}:latest python --version"
-Write-Host "     docker run --rm ${Tag}:latest-cpu python --version"
-Write-Host ""
-Write-Host "  2. Run with docker-compose:"
-Write-Host "     docker-compose up"
-Write-Host ""
-Write-Host "  3. Process an audio file:"
-Write-Host "     docker-compose exec speaker-profiles python auto_speaker_tagging_system.py /app/audio_files/your_audio.wav"
+Write-ColorOutput "Green" "`n🎉 Build script completed!"

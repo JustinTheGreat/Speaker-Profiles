@@ -1,362 +1,420 @@
-# Speaker-Profiles Docker Setup 🐳
+# 🐳 Speaker-Profiles Docker Environment
 
-This document provides comprehensive instructions for running the Speaker-Profiles system using Docker and Docker Compose.
+This folder contains a complete dockerized environment for the Speaker-Profiles project, enabling easy setup and sharing of the speaker recognition system with all its dependencies.
 
-> **🚀 NEW: Standalone Docker Environment Available!**  
-> For a completely self-contained Docker setup that doesn't require the full repository, see `README-STANDALONE.md`. This is perfect for users who just want to run the Speaker-Profiles system without development access.
+## 📋 Table of Contents
 
-## Quick Start
+- [Quick Start](#-quick-start)
+- [What's Included](#-whats-included)
+- [Prerequisites](#-prerequisites)
+- [Setup Instructions](#-setup-instructions)
+- [Usage Examples](#-usage-examples)
+- [Configuration](#-configuration)
+- [Available Services](#-available-services)
+- [Volume Mounts](#-volume-mounts)
+- [Troubleshooting](#-troubleshooting)
+- [Development](#-development)
+- [Performance Notes](#-performance-notes)
 
-### Prerequisites
+## 🚀 Quick Start
 
-- [Docker](https://docs.docker.com/get-docker/) (20.10.0 or later)
-- [Docker Compose](https://docs.docker.com/compose/install/) (v2.0.0 or later)
-- For GPU support: [NVIDIA Docker](https://github.com/NVIDIA/nvidia-docker) (nvidia-container-toolkit)
+### Windows (PowerShell)
+```powershell
+# 1. Build the Docker image
+.\build.ps1
 
-### 1. Clone and Setup
+# 2. Setup environment
+.\run.ps1 -Setup
+
+# 3. Edit .env.docker and add your HuggingFace token
+
+# 4. Run the container
+.\run.ps1 -Interactive
+```
+
+### Linux/macOS (Bash)
+```bash
+# 1. Make scripts executable
+chmod +x build.sh
+
+# 2. Build the Docker image
+./build.sh
+
+# 3. Setup environment
+mkdir -p ../audio ../speakers ../output
+
+# 4. Copy and configure environment
+cp .env.docker .env.docker.local
+# Edit .env.docker.local and set your HUGGING_FACE_ACCESS_TOKEN
+
+# 5. Run the container
+docker-compose up speaker-profiles-gpu
+```
+
+## 📦 What's Included
+
+This Docker environment provides:
+
+- **🎯 Complete AI/ML Stack**: PyTorch, SpeechBrain, pyannote.audio, transformers
+- **🔧 Audio Processing**: FFmpeg, SoX, librosa, soundfile
+- **🐍 Python Environment**: Python 3.9+ with all required dependencies
+- **⚡ GPU Support**: CUDA-enabled PyTorch for accelerated inference
+- **💻 CPU Fallback**: CPU-only version for systems without GPU
+- **📁 Volume Persistence**: Persistent model cache and speaker database
+- **🔒 Security**: Non-root user execution
+- **🩺 Health Checks**: Built-in container health monitoring
+
+## 📋 Prerequisites
+
+### Required
+- **Docker**: Docker Desktop (Windows/macOS) or Docker Engine (Linux)
+- **Docker Compose**: Usually included with Docker Desktop
+- **HuggingFace Account**: For accessing pyannote.audio models
+  - Get your token: https://huggingface.co/settings/tokens
+
+### For GPU Support (Optional)
+- **NVIDIA GPU**: Compatible with CUDA 11.8+
+- **NVIDIA Container Toolkit**: For Docker GPU access
+  - [Installation Guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
+
+### System Requirements
+- **RAM**: Minimum 8GB, Recommended 16GB+
+- **Storage**: At least 10GB free space for models and cache
+- **CPU**: Multi-core processor recommended
+
+## 🛠 Setup Instructions
+
+### Step 1: Build Docker Images
+
+#### Windows
+```powershell
+# Build GPU version (default)
+.\build.ps1
+
+# Build CPU version
+.\build.ps1 -Version cpu
+
+# Build all versions
+.\build.ps1 -Version all
+
+# Build without cache (clean build)
+.\build.ps1 -NoCache
+```
+
+#### Linux/macOS
+```bash
+# Build GPU version (default)
+./build.sh
+
+# Build CPU version
+./build.sh -v cpu
+
+# Build all versions
+./build.sh -v all
+
+# Build without cache
+./build.sh --no-cache
+```
+
+### Step 2: Environment Configuration
+
+1. **Copy environment template**:
+   ```bash
+   cp .env.docker .env.docker.local
+   ```
+
+2. **Edit environment file**:
+   - Set `HUGGING_FACE_ACCESS_TOKEN=your_actual_token_here`
+   - Adjust other settings as needed
+
+3. **Create directory structure**:
+   ```bash
+   mkdir -p ../audio ../speakers ../output
+   ```
+
+### Step 3: Initial Run
 
 ```bash
-# Clone the repository
-git clone https://github.com/JustinTheGreat/Speaker-Profiles.git
-cd Speaker-Profiles
+# Start GPU version interactively
+docker-compose up speaker-profiles-gpu
 
-# Create your environment file
-cp .env.template .env
+# Start CPU version
+docker-compose up speaker-profiles-cpu
 
-# Navigate to docker directory
-cd docker
+# Start in background
+docker-compose up -d speaker-profiles-gpu
 ```
 
-### 2. Configure Environment
+## 💡 Usage Examples
 
-Edit `.env` file with your credentials:
+### Basic Audio Processing
 
-```bash
-# Required: Get this from https://huggingface.co/settings/tokens
-HUGGING_FACE_ACCESS_TOKEN=your_actual_token_here
-```
-
-### 3. Create Required Directories
-
-```bash
-# Create directories for audio files and persistent data (from project root)
-cd ..
-mkdir -p audio_files speakers output transcription_output pretrained_models
-cd docker
-```
-
-### 4. Run with Docker Compose
-
-**For GPU Systems:**
-```bash
-# Start the container (from docker/ directory)
-docker-compose up
-
-# Run in background
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Or use convenience script
-./run.sh
-```
-
-**For CPU-only Systems:**
-```bash
-# Use the CPU-only profile
-docker-compose --profile cpu-only up
-
-# Or use convenience script
-./run.sh --cpu-only
-```
-
-## Using Pre-built Images from GitHub Container Registry
-
-Instead of building locally, you can use our pre-built images:
-
-```bash
-# Pull the latest GPU image
-docker pull ghcr.io/yourusername/speaker-profiles:latest
-
-# Pull the latest CPU image
-docker pull ghcr.io/yourusername/speaker-profiles:latest-cpu
-
-# Update docker-compose.yml to use pre-built images
-# Replace 'build: .' with 'image: ghcr.io/yourusername/speaker-profiles:latest'
-```
-
-## Running Commands
-
-### Basic Usage
-
-```bash
-# Process a single audio file
-docker-compose exec speaker-profiles python auto_speaker_tagging_system.py "/app/audio_files/your_audio.wav"
-
-# Run interactive example
-docker-compose exec speaker-profiles python simple_auto_tagging_example.py
-
-# Transcribe with speaker identification
-docker-compose exec speaker-profiles python speaker_transcription_system.py "/app/audio_files/your_audio.wav"
-```
-
-### Using Docker Run Directly
-
-```bash
-# Process audio file with GPU
-docker run --rm --gpus all \
-  -v $(pwd)/audio_files:/app/audio_files:ro \
-  -v $(pwd)/speakers:/app/speakers \
-  -v $(pwd)/output:/app/output \
-  -v $(pwd)/.env:/app/.env:ro \
-  ghcr.io/yourusername/speaker-profiles:latest \
-  python auto_speaker_tagging_system.py "/app/audio_files/your_audio.wav"
-
-# CPU-only version
-docker run --rm \
-  -v $(pwd)/audio_files:/app/audio_files:ro \
-  -v $(pwd)/speakers:/app/speakers \
-  -v $(pwd)/output:/app/output \
-  -v $(pwd)/.env:/app/.env:ro \
-  ghcr.io/yourusername/speaker-profiles:latest-cpu \
-  python auto_speaker_tagging_system.py "/app/audio_files/your_audio.wav"
-```
-
-## Volume Mounts Explained
-
-| Host Directory | Container Directory | Purpose |
-|---------------|-------------------|---------|
-| `./speakers` | `/app/speakers` | Persistent speaker profiles database |
-| `./audio_files` | `/app/audio_files` | Input audio files (read-only) |
-| `./output` | `/app/output` | Speaker identification results |
-| `./transcription_output` | `/app/transcription_output` | Transcription results |
-| `./pretrained_models` | `/app/pretrained_models` | Downloaded AI models cache |
-| `./.env` | `/app/.env` | Environment variables |
-
-## Directory Structure
-
-After setup, your directory should look like:
-
-```
-Speaker-Profiles/
-├── .env                          # Your environment variables
-├── docker-compose.yml            # Docker Compose configuration
-├── Dockerfile                    # GPU Docker image
-├── Dockerfile.cpu               # CPU Docker image
-├── audio_files/                 # Put your audio files here
-│   ├── meeting1.wav
-│   └── interview.mp3
-├── speakers/                    # Speaker profiles (auto-created)
-│   ├── John_Doe/
-│   │   ├── John_Doe.pkl
-│   │   └── John_Doe_info.json
-│   └── Speaker_001/
-├── output/                      # Processing results
-├── transcription_output/        # Transcription results
-└── pretrained_models/          # Cached AI models
-```
-
-## Common Commands
-
-### Speaker Database Management
-
-```bash
-# List all known speakers
-docker-compose exec speaker-profiles python auto_speaker_tagging_system.py --list-speakers
-
-# Verify speaker database integrity
-docker-compose exec speaker-profiles python auto_speaker_tagging_system.py --verify-folders
-
-# Migrate old speaker structure (if needed)
-docker-compose exec speaker-profiles python auto_speaker_tagging_system.py --migrate-dry-run
-docker-compose exec speaker-profiles python auto_speaker_tagging_system.py --migrate
-```
-
-### Batch Processing
-
-```bash
-# Process multiple files
-docker-compose exec speaker-profiles python auto_speaker_tagging_system.py \
-  "/app/audio_files/file1.wav" "/app/audio_files/file2.wav" --batch
-
-# Save results to files
-docker-compose exec speaker-profiles python auto_speaker_tagging_system.py \
-  "/app/audio_files/meeting.wav" --save-results
-```
+1. **Place audio files** in the `../audio` directory
+2. **Run the container**:
+   ```bash
+   docker-compose run speaker-profiles-gpu python simple_auto_tagging_example.py /app/audio/your_audio.wav
+   ```
 
 ### Interactive Development
 
 ```bash
-# Enter container for development
-docker-compose exec speaker-profiles bash
+# Start development container
+docker-compose up speaker-profiles-dev
 
-# Install additional packages (temporary)
-docker-compose exec speaker-profiles pip install jupyter
+# Access the container
+docker exec -it speaker-profiles-dev bash
 
-# Run Jupyter notebook (if installed)
-docker-compose exec speaker-profiles jupyter lab --ip=0.0.0.0 --port=8000 --no-browser --allow-root
+# Inside container
+cd /app
+python simple_auto_tagging_example.py audio/sample.wav
 ```
 
-## GPU Support
-
-### Setup NVIDIA Docker
+### Processing Multiple Files
 
 ```bash
-# Install nvidia-container-toolkit (Ubuntu/Debian)
-curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
-  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
-  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+# Process all files in audio directory
+docker-compose run speaker-profiles-gpu python -c "
+import os
+from auto_speaker_tagging_system import AutoSpeakerTaggingSystem
 
-sudo apt-get update
-sudo apt-get install -y nvidia-container-toolkit
-sudo systemctl restart docker
+system = AutoSpeakerTaggingSystem()
+for filename in os.listdir('/app/audio'):
+    if filename.endswith(('.wav', '.mp3', '.flac')):
+        print(f'Processing {filename}...')
+        system.process_audio_file(f'/app/audio/{filename}')
+"
 ```
 
-### Verify GPU Access
+### Using Windows Scripts
 
-```bash
-# Test GPU availability in container
-docker-compose exec speaker-profiles python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}'); print(f'GPU count: {torch.cuda.device_count()}')"
+```powershell
+# Check container status
+.\run.ps1 -Status
+
+# Run setup
+.\run.ps1 -Setup
+
+# Start interactively
+.\run.ps1 -Interactive
+
+# Start in background
+.\run.ps1 -Background
+
+# Process specific file
+.\run.ps1 -AudioFile "sample.wav"
 ```
 
-## Troubleshooting
+## ⚙ Configuration
+
+### Environment Variables (.env.docker)
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `HUGGING_FACE_ACCESS_TOKEN` | **Required**: HF token for model access | - |
+| `TRANSFORMERS_CACHE` | Model cache directory | `/app/pretrained_models/transformers` |
+| `HF_HOME` | HuggingFace cache directory | `/app/pretrained_models/huggingface` |
+| `SPEECHBRAIN_CACHE` | SpeechBrain cache directory | `/app/pretrained_models/speechbrain` |
+| `DEFAULT_SIMILARITY_THRESHOLD` | Speaker matching threshold | `0.75` |
+| `MIN_SPEECH_TIME` | Minimum speech duration (seconds) | `2.0` |
+| `MIN_QUALITY_THRESHOLD` | Minimum embedding quality | `0.3` |
+
+### Docker Compose Services
+
+| Service | Description | Port | Use Case |
+|---------|-------------|------|----------|
+| `speaker-profiles-gpu` | GPU-accelerated version | 8000 | Production, fast processing |
+| `speaker-profiles-cpu` | CPU-only version | 8001 | Development, testing |
+| `speaker-profiles-dev` | Development version | 8002 | Code development, debugging |
+
+## 📁 Volume Mounts
+
+| Host Path | Container Path | Purpose |
+|-----------|----------------|---------|
+| `../audio` | `/app/audio` | Input audio files (read-only) |
+| `../speakers` | `/app/speakers` | Speaker database (persistent) |
+| `../output` | `/app/output` | Processing results |
+| `speaker-models-cache` | `/app/pretrained_models` | Model cache (persistent) |
+
+## 🔧 Available Services
+
+### GPU Version (Default)
+- **Image**: `speaker-profiles:gpu`
+- **Features**: CUDA acceleration, faster processing
+- **Requirements**: NVIDIA GPU with Docker GPU support
+
+### CPU Version (Fallback)
+- **Image**: `speaker-profiles:cpu`
+- **Features**: CPU-only processing, broader compatibility
+- **Requirements**: Standard Docker installation
+
+### Development Version
+- **Image**: `speaker-profiles:dev`
+- **Features**: Live code mounting, development tools
+- **Use**: Code development and testing
+
+## 🐛 Troubleshooting
 
 ### Common Issues
 
-1. **Permission Errors**
-   ```bash
-   # Fix ownership of generated files
-   sudo chown -R $USER:$USER speakers/ output/ transcription_output/
-   ```
+#### "HUGGING_FACE_ACCESS_TOKEN not set"
+```bash
+# Check your .env.docker file
+cat .env.docker | grep HUGGING_FACE_ACCESS_TOKEN
 
-2. **Out of Memory**
-   ```bash
-   # Use CPU version or add swap
-   docker-compose --profile cpu-only up
-   ```
+# Update the token
+echo "HUGGING_FACE_ACCESS_TOKEN=your_token_here" >> .env.docker
+```
 
-3. **Model Download Fails**
-   ```bash
-   # Check your .env file and internet connection
-   docker-compose exec speaker-profiles python -c "import os; print('HF Token:', os.getenv('HUGGING_FACE_ACCESS_TOKEN', 'NOT SET'))"
-   ```
+#### GPU Not Detected
+```bash
+# Check GPU support
+docker run --gpus all nvidia/cuda:11.8-runtime-ubuntu20.04 nvidia-smi
 
-4. **Audio Format Issues**
-   ```bash
-   # Convert audio format using ffmpeg
-   docker-compose exec speaker-profiles ffmpeg -i input.mp3 -ar 16000 -ac 1 output.wav
-   ```
+# If this fails, install NVIDIA Container Toolkit
+# https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+```
 
-### Logs and Debugging
+#### Model Download Issues
+```bash
+# Check network connectivity
+docker run speaker-profiles:gpu ping -c 3 huggingface.co
+
+# Clear model cache
+docker volume rm speaker-profiles_speaker-models-cache
+```
+
+#### Permission Issues (Linux)
+```bash
+# Fix directory permissions
+sudo chown -R $(whoami):$(whoami) ../speakers ../output
+
+# Or run with proper user mapping
+docker-compose run --user $(id -u):$(id -g) speaker-profiles-gpu bash
+```
+
+#### Out of Memory
+```bash
+# Monitor container memory usage
+docker stats speaker-profiles-gpu
+
+# Increase Docker memory limit in Docker Desktop settings
+# Or use CPU version for lower memory usage
+docker-compose up speaker-profiles-cpu
+```
+
+### Debugging Commands
 
 ```bash
-# View container logs
-docker-compose logs speaker-profiles
+# Check container logs
+docker-compose logs speaker-profiles-gpu
 
-# Follow logs in real-time
-docker-compose logs -f speaker-profiles
+# Access running container
+docker exec -it speaker-profiles-gpu bash
 
-# Debug container startup
-docker-compose up --no-deps speaker-profiles
+# Check Python imports
+docker-compose run speaker-profiles-gpu python -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}')"
 
-# Check container health
-docker-compose exec speaker-profiles python -c "import torch, speechbrain, whisper, pyannote.audio; print('All imports successful')"
+# Test model loading
+docker-compose run speaker-profiles-gpu python -c "
+import os
+from dotenv import load_dotenv
+load_dotenv()
+print('HF Token set:', bool(os.getenv('HUGGING_FACE_ACCESS_TOKEN')))
+"
 ```
 
-## Building Custom Images
+## 👨‍💻 Development
 
-### Build Locally
+### Code Development Workflow
 
-```bash
-# Build GPU version
-docker build -t speaker-profiles:local .
+1. **Start development container**:
+   ```bash
+   docker-compose up speaker-profiles-dev
+   ```
 
-# Build CPU version
-docker build -t speaker-profiles:local-cpu -f Dockerfile.cpu .
+2. **Access container**:
+   ```bash
+   docker exec -it speaker-profiles-dev bash
+   ```
 
-# Build with custom base image
-docker build --build-arg BASE_IMAGE=python:3.9 -t speaker-profiles:custom .
+3. **Edit code** on host system (files are mounted)
+
+4. **Test changes** inside container without rebuilding
+
+### Adding New Dependencies
+
+1. **Update requirements file**:
+   - Edit `requirements-docker.txt` (GPU) or `requirements-docker-cpu.txt` (CPU)
+
+2. **Rebuild image**:
+   ```bash
+   ./build.sh --no-cache
+   ```
+
+### Custom Configuration
+
+1. **Create custom docker-compose override**:
+   ```yaml
+   # docker-compose.override.yml
+   version: '3.8'
+   services:
+     speaker-profiles-gpu:
+       environment:
+         - CUSTOM_ENV_VAR=value
+       volumes:
+         - ./custom-config:/app/config
+   ```
+
+## ⚡ Performance Notes
+
+### GPU Performance
+- **First run**: Slower due to model downloads (~5-10 GB)
+- **Subsequent runs**: Fast model loading from cache
+- **Memory usage**: ~4-6GB GPU memory for typical models
+
+### CPU Performance  
+- **Processing time**: 3-5x slower than GPU
+- **Memory usage**: ~2-4GB RAM
+- **Suitable for**: Testing, small files, development
+
+### Optimization Tips
+
+1. **Pre-warm models**: Run container once to download all models
+2. **Use GPU version**: For production workloads
+3. **Batch processing**: Process multiple files in single session
+4. **Monitor resources**: Use `docker stats` to monitor usage
+
+## 📝 File Structure
+
+```
+docker/
+├── Dockerfile              # Main GPU-enabled image
+├── Dockerfile.cpu          # CPU-only image
+├── docker-compose.yml      # Container orchestration
+├── requirements-docker.txt # Python dependencies (GPU)
+├── requirements-docker-cpu.txt # Python dependencies (CPU)
+├── .env.docker            # Environment template
+├── build.ps1              # Windows build script
+├── build.sh               # Linux build script  
+├── run.ps1                # Windows run script
+├── README.md              # This file
+├── TROUBLESHOOTING.md     # Detailed troubleshooting guide
+└── *.py                   # Project Python files
 ```
 
-### Development Build
+## 🤝 Contributing
 
-```bash
-# Build with development tools
-docker build -t speaker-profiles:dev --target development .
+1. **Test changes** with both GPU and CPU versions
+2. **Update documentation** for new features
+3. **Test on multiple platforms** (Windows/Linux)
+4. **Verify security** (no root execution, proper secrets handling)
 
-# Mount source code for live editing
-docker-compose -f docker-compose.dev.yml up
-```
+## 📄 License
 
-## Production Deployment
+This Docker environment inherits the license from the main Speaker-Profiles project.
 
-### Using Docker Swarm
+---
 
-```bash
-# Deploy as a service
-docker stack deploy -c docker-compose.yml speaker-profiles-stack
-```
+🎉 **Enjoy using Speaker-Profiles in Docker!** 
 
-### Using Kubernetes
-
-```yaml
-# Create deployment.yaml for Kubernetes
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: speaker-profiles
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: speaker-profiles
-  template:
-    metadata:
-      labels:
-        app: speaker-profiles
-    spec:
-      containers:
-      - name: speaker-profiles
-        image: ghcr.io/yourusername/speaker-profiles:latest
-        env:
-        - name: HUGGING_FACE_ACCESS_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: hf-token
-              key: token
-        volumeMounts:
-        - name: speaker-data
-          mountPath: /app/speakers
-        - name: audio-files
-          mountPath: /app/audio_files
-      volumes:
-      - name: speaker-data
-        persistentVolumeClaim:
-          claimName: speaker-data-pvc
-      - name: audio-files
-        hostPath:
-          path: /path/to/audio/files
-```
-
-## Environment Variables Reference
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `HUGGING_FACE_ACCESS_TOKEN` | ✅ Yes | - | HuggingFace API token for model access |
-| `TRANSFORMERS_CACHE` | No | `/app/pretrained_models/transformers` | Transformers model cache directory |
-| `HF_HOME` | No | `/app/pretrained_models/huggingface` | HuggingFace cache directory |
-| `SPEECHBRAIN_CACHE` | No | `/app/pretrained_models/speechbrain` | SpeechBrain model cache directory |
-| `CUDA_VISIBLE_DEVICES` | No | (all) | GPU devices to use (CPU: "") |
-
-## Support and Resources
-
-- **GitHub Issues**: Report bugs and request features
-- **Documentation**: See `WARP.md` for development guidance
-- **Docker Hub**: Pre-built images available
-- **GitHub Container Registry**: `ghcr.io/yourusername/speaker-profiles`
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+For additional help, check the [Troubleshooting Guide](TROUBLESHOOTING.md) or open an issue on the project repository.

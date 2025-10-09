@@ -1,261 +1,438 @@
-# Docker Build Troubleshooting Guide
+# 🔧 Troubleshooting Guide - Speaker-Profiles Docker
 
-This guide helps resolve common issues when building and running Speaker-Profiles Docker containers.
+This guide covers common issues and solutions when using the Speaker-Profiles Docker environment.
 
-## 🚫 Disk Space Issues (GitHub Actions)
+## 📋 Quick Diagnostics
 
-### Problem
-```
-System.IO.IOException: No space left on device
-```
+### System Check Commands
 
-### Solutions
-
-**Option 1: Use optimized workflow (recommended)**
-The repository now includes optimized workflows that:
-- Free up ~14GB disk space before building
-- Use minimal requirements for faster builds  
-- Build only AMD64 architecture by default
-- Use efficient caching strategies
-
-**Option 2: Build locally and push**
 ```bash
-# Build locally on your machine
-cd docker
-./build.sh --tag ghcr.io/yourusername/speaker-profiles --push
+# Check Docker installation
+docker --version
+docker-compose --version
+
+# Check Docker daemon
+docker info
+
+# Check available images  
+docker images speaker-profiles
+
+# Check running containers
+docker ps --filter "name=speaker-profiles"
+
+# Check container logs
+docker-compose logs speaker-profiles-gpu
 ```
 
-**Option 3: Manual workflow trigger**
-- Go to Actions tab in GitHub
-- Select "Build and Push Docker Images" 
-- Click "Run workflow" 
-- Select only CPU or GPU build
+## 🚨 Common Issues
 
-## 🐳 Local Docker Issues
+### 1. Docker Not Running
 
-### Problem: Build fails with "no space left on device" locally
+#### Symptoms:
+- `Cannot connect to the Docker daemon`
+- `docker: command not found`
 
-**Solution:**
-```bash
-# Clean up Docker
-docker system prune -af
-docker volume prune -f
+#### Solutions:
 
-# Check available space
-df -h
+**Windows:**
+```powershell
+# Start Docker Desktop
+Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe"
 
-# Build with smaller image
-cd docker
-docker build -f Dockerfile.cpu -t speaker-profiles:cpu ..
+# Wait for Docker to start, then verify
+docker --version
 ```
 
-### Problem: Container runs but AI models fail to load
-
-**Check 1: Verify .env file**
+**Linux:**
 ```bash
-cat ../.env
-# Should contain: HUGGING_FACE_ACCESS_TOKEN=your_actual_token
+# Start Docker service
+sudo systemctl start docker
+sudo systemctl enable docker
+
+# Add user to docker group (requires logout/login)
+sudo usermod -aG docker $USER
 ```
 
-**Check 2: Test HuggingFace access**
+**macOS:**
 ```bash
-docker-compose exec speaker-profiles python -c "
-import os
-token = os.getenv('HUGGING_FACE_ACCESS_TOKEN')
-print('Token set:' if token and token != 'your_hugging_face_token_here' else 'Token missing')
+# Start Docker Desktop from Applications
+open -a Docker
+
+# Or via command line
+/Applications/Docker.app/Contents/MacOS/Docker --daemon
+```
+
+### 2. GPU Support Issues
+
+#### Symptoms:
+- `NVIDIA-SMI has failed`
+- `RuntimeError: No CUDA GPUs are available`
+- Container uses CPU instead of GPU
+
+#### Diagnostics:
+
+```bash
+# Test NVIDIA Docker support
+docker run --gpus all nvidia/cuda:11.8-runtime-ubuntu20.04 nvidia-smi
+
+# Check if NVIDIA Container Toolkit is installed
+which nvidia-container-runtime
+```
+
+#### Solutions:
+
+**Install NVIDIA Container Toolkit:**
+
+Ubuntu/Debian:
+```bash
+# Add NVIDIA package repository
+curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
+distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | \
+  sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+
+# Install nvidia-docker2
+sudo apt-get update
+sudo apt-get install -y nvidia-docker2
+
+# Restart Docker
+sudo systemctl restart docker
+```
+
+**Windows with WSL2:**
+```powershell
+# Ensure you have:
+# 1. NVIDIA GPU drivers for Windows
+# 2. WSL2 with NVIDIA support
+# 3. Docker Desktop with WSL2 backend
+
+# Test in WSL2
+wsl nvidia-smi
+```
+
+### 3. HuggingFace Token Issues
+
+#### Symptoms:
+- `Please set a valid HUGGING_FACE_ACCESS_TOKEN`
+- `401 Unauthorized` when downloading models
+- `Repository not found` errors
+
+#### Solutions:
+
+```bash
+# Check if token is set
+grep HUGGING_FACE_ACCESS_TOKEN .env.docker
+
+# Get token from HuggingFace
+echo "Visit: https://huggingface.co/settings/tokens"
+
+# Set token properly (replace YOUR_TOKEN)
+sed -i 's/your_hugging_face_token_here/YOUR_ACTUAL_TOKEN/' .env.docker
+
+# Verify token format (should be hf_...)
+# Valid format: hf_xxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+### 4. Model Download Failures
+
+#### Symptoms:
+- `Failed to download model`
+- Connection timeouts
+- SSL certificate errors
+
+#### Solutions:
+
+```bash
+# Test network connectivity
+docker run speaker-profiles:gpu ping -c 3 huggingface.co
+
+# Clear corrupted model cache
+docker volume rm speaker-profiles_speaker-models-cache
+docker volume rm speaker-profiles_speaker-models-cache-cpu
+
+# Download models manually (if needed)
+docker-compose run speaker-profiles-gpu python -c "
+from transformers import AutoModel
+model = AutoModel.from_pretrained('speechbrain/spkrec-ecapa-voxceleb')
+print('Model downloaded successfully')
 "
 ```
 
-**Check 3: Download models manually**
-```bash
-# Enter container
-docker-compose exec speaker-profiles bash
+### 5. Memory Issues
 
-# Test model download
-python -c "
-from pyannote.audio import Pipeline
-pipeline = Pipeline.from_pretrained('pyannote/speaker-diarization-3.1')
-print('Model loaded successfully!')
-"
-```
+#### Symptoms:
+- `CUDA out of memory`
+- `Killed` processes
+- Container exits unexpectedly
 
-## 🔧 Performance Issues
+#### Diagnostics:
 
-### Problem: Slow builds
-
-**Solution 1: Use minimal requirements**
-```bash
-# Use the optimized Docker requirements
-cd docker
-docker build -f Dockerfile.cpu --build-arg REQUIREMENTS_FILE=requirements-docker.txt ..
-```
-
-**Solution 2: Multi-stage builds**
-```bash
-# Build with caching
-docker build --cache-from speaker-profiles:latest -t speaker-profiles:latest -f Dockerfile ..
-```
-
-### Problem: Out of memory during processing
-
-**Solution 1: Use CPU version**
-```bash
-docker-compose --profile cpu-only up
-```
-
-**Solution 2: Increase Docker memory limit**
-- Docker Desktop → Settings → Resources → Memory → Increase to 8GB+
-
-**Solution 3: Process smaller files**
-```bash
-# Split large audio files
-docker-compose exec speaker-profiles ffmpeg -i large_audio.wav -t 300 smaller_chunk.wav
-```
-
-## 🌐 Network Issues
-
-### Problem: Can't download models or packages
-
-**Check 1: Internet connectivity**
-```bash
-docker-compose exec speaker-profiles curl -I https://huggingface.co
-```
-
-**Check 2: Proxy settings (if behind corporate firewall)**
-```bash
-# Add to docker-compose.yml environment:
-environment:
-  - HTTP_PROXY=http://proxy.company.com:8080
-  - HTTPS_PROXY=http://proxy.company.com:8080
-```
-
-**Check 3: DNS issues**
-```bash
-# Add to docker-compose.yml
-dns:
-  - 8.8.8.8
-  - 8.8.4.4
-```
-
-## 🔍 Debugging Tips
-
-### Enable verbose logging
-```bash
-# Set debug environment
-export DOCKER_BUILDKIT=1
-export BUILDKIT_PROGRESS=plain
-
-# Build with verbose output
-docker build --progress=plain -f docker/Dockerfile .
-```
-
-### Check container logs
-```bash
-# View logs
-docker-compose logs -f speaker-profiles
-
-# Debug container startup
-docker-compose run --rm speaker-profiles bash
-```
-
-### Test specific components
-```bash
-# Test audio processing
-docker-compose exec speaker-profiles python -c "
-import torchaudio
-print('Audio support:', torchaudio.list_audio_backends())
-"
-
-# Test GPU support
-docker-compose exec speaker-profiles python -c "
-import torch
-print('CUDA available:', torch.cuda.is_available())
-if torch.cuda.is_available():
-    print('GPU count:', torch.cuda.device_count())
-    print('GPU name:', torch.cuda.get_device_name(0))
-"
-```
-
-## 🚀 Optimization Recommendations
-
-### For Development
-```bash
-# Use CPU version for development
-docker-compose --profile cpu-only up
-
-# Mount source code for live editing
-# (Already configured in docker-compose.yml)
-```
-
-### For Production
-```bash
-# Use pre-built images
-docker pull ghcr.io/yourusername/speaker-profiles:latest
-docker pull ghcr.io/yourusername/speaker-profiles:latest-cpu
-
-# Pin to specific version
-docker pull ghcr.io/yourusername/speaker-profiles:v1.0.0
-```
-
-### Resource Limits
-```yaml
-# Add to docker-compose.yml services
-deploy:
-  resources:
-    limits:
-      memory: 4G
-      cpus: '2.0'
-    reservations:
-      memory: 2G
-      cpus: '1.0'
-```
-
-## 📊 Monitoring
-
-### Check resource usage
 ```bash
 # Monitor container resources
-docker stats
+docker stats speaker-profiles-gpu
 
-# Check disk usage
-docker system df
-
-# Check image sizes
-docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
+# Check system memory
+free -h  # Linux
+Get-WmiObject -Class Win32_OperatingSystem | Select-Object TotalVisibleMemorySize,FreePhysicalMemory  # Windows
 ```
 
-### Health checks
+#### Solutions:
+
 ```bash
-# Manual health check
-docker-compose exec speaker-profiles python -c "
-import torch, speechbrain, whisper, pyannote.audio
-print('✅ All dependencies working!')
+# Use CPU version for lower memory usage
+docker-compose up speaker-profiles-cpu
+
+# Reduce batch size (edit Python files)
+# Process smaller audio files
+# Add swap space (Linux)
+sudo fallocate -l 4G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+```
+
+### 6. Permission Issues (Linux/macOS)
+
+#### Symptoms:
+- `Permission denied` when writing to volumes
+- Files owned by root in mounted directories
+
+#### Solutions:
+
+```bash
+# Fix directory ownership
+sudo chown -R $(whoami):$(whoami) ../speakers ../output ../audio
+
+# Run with proper user mapping
+docker-compose run --user $(id -u):$(id -g) speaker-profiles-gpu bash
+
+# Set proper permissions
+chmod -R 755 ../speakers ../output ../audio
+```
+
+### 7. Audio File Issues
+
+#### Symptoms:
+- `FileNotFoundError` for audio files
+- `Unsupported audio format`
+- Audio processing failures
+
+#### Solutions:
+
+```bash
+# Check audio file format
+file ../audio/your_file.wav
+
+# Convert audio to supported format
+ffmpeg -i input.mp3 -ar 16000 -ac 1 output.wav
+
+# Test with sample audio
+docker-compose run speaker-profiles-gpu python -c "
+import torchaudio
+waveform, sample_rate = torchaudio.load('/app/audio/test.wav')
+print(f'Audio loaded: {waveform.shape} at {sample_rate}Hz')
 "
 ```
 
-## 🆘 Getting Help
+### 8. Build Failures
 
-1. **Check GitHub Issues**: Search for similar problems
-2. **Enable Debug Mode**: Set environment variables for verbose logging  
-3. **Collect Information**:
-   ```bash
-   # System info
-   docker version
-   docker-compose version
-   docker system info
-   
-   # Container info
-   docker-compose ps
-   docker-compose logs speaker-profiles
-   ```
-4. **Create Issue**: Include system info, logs, and steps to reproduce
+#### Symptoms:
+- Package installation failures
+- Docker build errors
+- Missing dependencies
 
-## 📝 Common Error Messages
+#### Solutions:
 
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `No space left on device` | Disk full | Clean Docker: `docker system prune -af` |
-| `HUGGING_FACE_ACCESS_TOKEN` | Missing token | Set in `.env` file |
-| `CUDA out of memory` | GPU memory full | Use CPU version or smaller batch sizes |
-| `Connection refused` | Service not ready | Wait for container startup |
-| `Permission denied` | File ownership | Fix with `sudo chown -R $USER:$USER ./` |
+```bash
+# Clean build without cache
+./build.sh --no-cache
+
+# Check Docker Hub connectivity
+docker pull python:3.9-slim-bullseye
+
+# Free up disk space
+docker system prune -a
+
+# Check build logs
+docker build --progress=plain -f Dockerfile -t speaker-profiles:debug .
+```
+
+## 🔍 Advanced Debugging
+
+### Container Inspection
+
+```bash
+# Inspect running container
+docker exec -it speaker-profiles-gpu bash
+
+# Inside container - check Python environment
+python -c "
+import torch
+import speechbrain
+import pyannote.audio
+print(f'PyTorch: {torch.__version__}')
+print(f'CUDA available: {torch.cuda.is_available()}')
+print(f'GPU count: {torch.cuda.device_count()}')
+"
+
+# Check environment variables
+env | grep -E "(HF|TRANSFORMERS|CUDA|PYTHON)"
+
+# Check mounted volumes
+ls -la /app/audio /app/speakers /app/output
+```
+
+### Log Analysis
+
+```bash
+# Container logs with timestamps
+docker-compose logs -t speaker-profiles-gpu
+
+# Follow logs in real-time
+docker-compose logs -f speaker-profiles-gpu
+
+# Python error debugging
+docker-compose run speaker-profiles-gpu python -u -c "
+import traceback
+try:
+    from auto_speaker_tagging_system import AutoSpeakerTaggingSystem
+    system = AutoSpeakerTaggingSystem()
+    print('System initialized successfully')
+except Exception as e:
+    traceback.print_exc()
+"
+```
+
+### Performance Monitoring
+
+```bash
+# Container resource usage
+docker stats --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}"
+
+# GPU utilization (if available)
+docker exec speaker-profiles-gpu nvidia-smi
+
+# Disk usage in container
+docker exec speaker-profiles-gpu df -h
+```
+
+## 🛠 Environment-Specific Issues
+
+### Windows Specific
+
+#### Windows Path Issues
+```powershell
+# Use proper Windows paths in docker-compose
+# Convert paths if needed
+$windowsPath = "C:\Users\marcu\Documents\GitHub\Speaker-Profiles"
+$dockerPath = $windowsPath -replace '\\', '/' -replace 'C:', '/c'
+```
+
+#### WSL2 Issues
+```powershell
+# Check WSL2 version
+wsl --list --verbose
+
+# Update WSL2 if needed
+wsl --update
+
+# Set WSL2 as default
+wsl --set-default-version 2
+```
+
+### Linux Specific
+
+#### SELinux Issues
+```bash
+# Check SELinux status
+getenforce
+
+# Allow Docker volumes (if SELinux is enforcing)
+sudo setsebool -P container_manage_cgroup on
+```
+
+#### Firewall Issues
+```bash
+# Check if Docker ports are blocked
+sudo ufw status
+
+# Allow Docker ports if needed
+sudo ufw allow 8000:8002/tcp
+```
+
+### macOS Specific
+
+#### Docker Desktop Resource Limits
+```bash
+# Check Docker Desktop settings
+# Increase CPU/Memory limits in Docker Desktop preferences
+
+# File sharing permissions
+# Ensure project directory is shared in Docker Desktop settings
+```
+
+## 📞 Getting Help
+
+### Collecting Debug Information
+
+Before seeking help, collect this information:
+
+```bash
+# System info
+echo "=== System Information ===" > debug_info.txt
+uname -a >> debug_info.txt
+docker --version >> debug_info.txt
+docker-compose --version >> debug_info.txt
+
+# Docker info
+echo -e "\n=== Docker Information ===" >> debug_info.txt
+docker info >> debug_info.txt
+
+# Container status
+echo -e "\n=== Container Status ===" >> debug_info.txt
+docker ps -a --filter "name=speaker-profiles" >> debug_info.txt
+
+# Recent logs
+echo -e "\n=== Recent Logs ===" >> debug_info.txt
+docker-compose logs --tail=50 speaker-profiles-gpu >> debug_info.txt
+
+# Environment
+echo -e "\n=== Environment ===" >> debug_info.txt
+cat .env.docker | grep -v "HUGGING_FACE_ACCESS_TOKEN" >> debug_info.txt
+echo "HUGGING_FACE_ACCESS_TOKEN=***REDACTED***" >> debug_info.txt
+```
+
+### Community Resources
+
+- **Project Issues**: GitHub repository issues
+- **Docker Forums**: [Docker Community](https://forums.docker.com/)
+- **Stack Overflow**: Tag your questions with `docker`, `pytorch`, `speechbrain`
+
+### Emergency Recovery
+
+If everything fails:
+
+```bash
+# Complete cleanup and restart
+docker-compose down
+docker system prune -a -f
+docker volume prune -f
+
+# Remove all related images
+docker rmi $(docker images speaker-profiles -q)
+
+# Start fresh
+./build.sh --no-cache
+./run.ps1 -Setup
+```
+
+## 📚 Additional Resources
+
+- [Docker Documentation](https://docs.docker.com/)
+- [NVIDIA Container Toolkit Guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/)
+- [PyTorch Docker Guide](https://pytorch.org/get-started/locally/#docker-image)
+- [HuggingFace Hub Documentation](https://huggingface.co/docs/hub/index)
+
+---
+
+💡 **Remember**: Most issues are resolved by ensuring Docker is properly installed, the HuggingFace token is correct, and sufficient system resources are available.

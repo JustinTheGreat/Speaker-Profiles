@@ -1,64 +1,80 @@
-# Multi-stage build for smaller final image
-FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime as base
+# Speaker-Profiles Docker Image
+# Main Dockerfile with GPU support for CUDA-accelerated speaker recognition
+FROM pytorch/pytorch:2.1.0-cuda11.8-devel-ubuntu20.04
 
-# Set environment variables
-ENV DEBIAN_FRONTEND=noninteractive \
-    PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
-
-# Install system dependencies in single layer
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    libsndfile1 \
-    git \
-    wget \
-    curl \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
 
 # Set working directory
 WORKDIR /app
 
-# Copy and install minimal requirements
-COPY requirements-docker.txt ./
-RUN pip install --no-cache-dir -r requirements-docker.txt \
-    && python -c "import torch; print(f'PyTorch {torch.__version__} installed')" \
-    && rm -rf /tmp/* /root/.cache/pip/*
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    wget \
+    curl \
+    build-essential \
+    cmake \
+    pkg-config \
+    libsndfile1 \
+    libsndfile1-dev \
+    ffmpeg \
+    sox \
+    libsox-fmt-all \
+    libsox-dev \
+    libasound2-dev \
+    portaudio19-dev \
+    libportaudio2 \
+    libportaudiocpp0 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy necessary application files
-COPY requirements.txt ./
-COPY *.py ./
+# Set Python environment variables
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
 
-# Create directories and user in single layer
-RUN mkdir -p /app/{speakers,output,transcription_output,pretrained_models} \
-    && groupadd -r appuser && useradd -r -g appuser appuser \
-    && echo "HUGGING_FACE_ACCESS_TOKEN=your_hugging_face_token_here" > .env.template \
-    && chown -R appuser:appuser /app
+# Install PyTorch with CUDA support (specific versions for stability)
+RUN pip install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu118
 
-# Switch to non-root user
-USER appuser
+# Copy requirements first for better Docker layer caching
+COPY requirements-docker.txt /app/requirements.txt
 
-# Expose port for potential web interface (future enhancement)
-EXPOSE 8000
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Set default command
-CMD ["python", "--version"]
+# Create directories for model caching
+RUN mkdir -p /app/pretrained_models/transformers && \
+    mkdir -p /app/pretrained_models/huggingface && \
+    mkdir -p /app/pretrained_models/speechbrain && \
+    mkdir -p /app/speakers && \
+    mkdir -p /app/audio && \
+    mkdir -p /app/output
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "import torch, speechbrain, whisper, pyannote.audio; print('All dependencies working')" || exit 1
-
-# Labels for metadata
-LABEL maintainer="Speaker-Profiles"
-LABEL description="Automatic Speaker Recognition and Profiling System"
-LABEL version="1.0"
-LABEL org.opencontainers.image.source="https://github.com/yourusername/Speaker-Profiles"
-LABEL org.opencontainers.image.description="AI-powered speaker identification and transcription system"
-LABEL org.opencontainers.image.licenses="MIT"
-
-# Environment variables for model caching
+# Set environment variables for model caching
 ENV TRANSFORMERS_CACHE=/app/pretrained_models/transformers
 ENV HF_HOME=/app/pretrained_models/huggingface
 ENV SPEECHBRAIN_CACHE=/app/pretrained_models/speechbrain
+
+# Copy project files
+COPY *.py /app/
+COPY .env.docker /app/.env
+
+# Create a non-root user for security
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+RUN chown -R appuser:appuser /app
+USER appuser
+
+# Expose port for potential web interface (optional)
+EXPOSE 8000
+
+# Set default command
+CMD ["python", "simple_auto_tagging_example.py"]
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD python -c "import torch; import speechbrain; import pyannote.audio; print('OK')" || exit 1
+
+# Labels for better image management
+LABEL maintainer="Speaker-Profiles Project"
+LABEL description="GPU-enabled Docker image for automatic speaker recognition and profiling"
+LABEL version="1.0"
+LABEL gpu.required="true"

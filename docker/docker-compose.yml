@@ -1,39 +1,31 @@
 version: '3.8'
 
 services:
-  speaker-profiles:
-    build: 
+  # GPU-enabled version (default)
+  speaker-profiles-gpu:
+    build:
       context: .
       dockerfile: Dockerfile
-    image: speaker-profiles:latest
-    container_name: speaker-profiles-app
-    
-    # Environment variables
+    image: speaker-profiles:gpu
+    container_name: speaker-profiles-gpu
     environment:
-      - PYTHONPATH=/app
-      - TRANSFORMERS_CACHE=/app/pretrained_models/transformers
-      - HF_HOME=/app/pretrained_models/huggingface
-      - SPEECHBRAIN_CACHE=/app/pretrained_models/speechbrain
-    
-    # Load environment variables from .env file
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     env_file:
-      - ./.env
-    
-    # Volume mounts for persistent data and easy development
+      - .env.docker
     volumes:
-      # Persistent speaker database
-      - ./speakers:/app/speakers
-      # Output directories
-      - ./output:/app/output
-      - ./transcription_output:/app/transcription_output
-      # Model cache (avoid re-downloading)
-      - ./pretrained_models:/app/pretrained_models
-      # Audio files directory (create this on your host)
-      - ./audio_files:/app/audio_files:ro
-      # Development: mount source code for live editing (optional)
-      # - ./:/app:ro
-    
-    # GPU support (requires nvidia-docker)
+      # Mount audio files directory
+      - ../audio:/app/audio:ro
+      # Mount speakers database (persistent)
+      - ../speakers:/app/speakers
+      # Mount output directory
+      - ../output:/app/output
+      # Mount pretrained models cache (persistent)
+      - speaker-models-cache:/app/pretrained_models
+      # Optional: mount custom config
+      - ./.env.docker:/app/.env:ro
+    ports:
+      - "8000:8000"
     deploy:
       resources:
         reservations:
@@ -41,74 +33,87 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
-    
-    # Network configuration
-    ports:
-      - "8000:8000"  # For future web interface
-    
-    # Working directory
-    working_dir: /app
-    
-    # Default command - override as needed
-    command: ["python", "--version"]
-    
-    # Restart policy
     restart: unless-stopped
-    
-    # Health check
-    healthcheck:
-      test: ["CMD", "python", "-c", "import torch, speechbrain, whisper, pyannote.audio; print('OK')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+    stdin_open: true
+    tty: true
+    command: ["bash"]
 
-  # CPU-only version for systems without GPU
+  # CPU-only version (fallback)
   speaker-profiles-cpu:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile.cpu
     image: speaker-profiles:cpu
-    container_name: speaker-profiles-app-cpu
-    profiles:
-      - cpu-only
-    
+    container_name: speaker-profiles-cpu
     environment:
-      - PYTHONPATH=/app
       - CUDA_VISIBLE_DEVICES=""
-      - TRANSFORMERS_CACHE=/app/pretrained_models/transformers
-      - HF_HOME=/app/pretrained_models/huggingface
-      - SPEECHBRAIN_CACHE=/app/pretrained_models/speechbrain
-    
     env_file:
-      - ./.env
-    
+      - .env.docker
     volumes:
-      - ./speakers:/app/speakers
-      - ./output:/app/output
-      - ./transcription_output:/app/transcription_output
-      - ./pretrained_models:/app/pretrained_models
-      - ./audio_files:/app/audio_files:ro
-      # Development: mount source code for live editing (optional)
-      # - ./:/app:ro
-    
+      # Mount audio files directory
+      - ../audio:/app/audio:ro
+      # Mount speakers database (persistent)
+      - ../speakers:/app/speakers
+      # Mount output directory
+      - ../output:/app/output
+      # Mount pretrained models cache (persistent)
+      - speaker-models-cache-cpu:/app/pretrained_models
+      # Optional: mount custom config
+      - ./.env.docker:/app/.env:ro
     ports:
-      - "8000:8000"
-    
-    working_dir: /app
-    command: ["python", "--version"]
+      - "8001:8000"
     restart: unless-stopped
+    stdin_open: true
+    tty: true
+    command: ["bash"]
 
-# Named volumes for better management
+  # Development version with hot-reload
+  speaker-profiles-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: speaker-profiles:dev
+    container_name: speaker-profiles-dev
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env.docker
+    volumes:
+      # Mount the entire project for development
+      - ..:/app/project:ro
+      # Mount individual directories for persistence
+      - ../audio:/app/audio:ro
+      - ../speakers:/app/speakers
+      - ../output:/app/output
+      - speaker-models-cache:/app/pretrained_models
+      # Development: mount source code for live editing
+      - ../:/app/src:ro
+    working_dir: /app/src
+    ports:
+      - "8002:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    command: ["bash"]
+
 volumes:
-  speaker_data:
+  # Persistent model cache for GPU version
+  speaker-models-cache:
     driver: local
-  model_cache:
-    driver: local
-  output_data:
+  
+  # Persistent model cache for CPU version  
+  speaker-models-cache-cpu:
     driver: local
 
-# Networks
 networks:
   default:
-    driver: bridge
+    name: speaker-profiles-network
