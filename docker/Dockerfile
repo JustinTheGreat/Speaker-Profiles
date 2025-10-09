@@ -21,13 +21,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Set working directory
 WORKDIR /app
 
-# Copy and install minimal requirements from docker subdirectory
-COPY docker/requirements-docker.txt ./
+# Copy and install minimal requirements
+COPY requirements-docker.txt ./
 RUN pip install --no-cache-dir -r requirements-docker.txt \
     && python -c "import torch; print(f'PyTorch {torch.__version__} installed')" \
     && rm -rf /tmp/* /root/.cache/pip/*
 
-# Copy necessary application files from root
+# Copy necessary application files
 COPY requirements.txt ./
 COPY *.py ./
 

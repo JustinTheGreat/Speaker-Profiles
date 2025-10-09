@@ -2,6 +2,9 @@
 
 This document provides comprehensive instructions for running the Speaker-Profiles system using Docker and Docker Compose.
 
+> **🚀 NEW: Standalone Docker Environment Available!**  
+> For a completely self-contained Docker setup that doesn't require the full repository, see `README-STANDALONE.md`. This is perfect for users who just want to run the Speaker-Profiles system without development access.
+
 ## Quick Start
 
 ### Prerequisites

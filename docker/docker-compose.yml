@@ -3,8 +3,8 @@ version: '3.8'
 services:
   speaker-profiles:
     build: 
-      context: ..
-      dockerfile: docker/Dockerfile
+      context: .
+      dockerfile: Dockerfile
     image: speaker-profiles:latest
     container_name: speaker-profiles-app
     
@@ -17,21 +17,21 @@ services:
     
     # Load environment variables from .env file
     env_file:
-      - ../.env
+      - ./.env
     
     # Volume mounts for persistent data and easy development
     volumes:
       # Persistent speaker database
-      - ../speakers:/app/speakers
+      - ./speakers:/app/speakers
       # Output directories
-      - ../output:/app/output
-      - ../transcription_output:/app/transcription_output
+      - ./output:/app/output
+      - ./transcription_output:/app/transcription_output
       # Model cache (avoid re-downloading)
-      - ../pretrained_models:/app/pretrained_models
+      - ./pretrained_models:/app/pretrained_models
       # Audio files directory (create this on your host)
-      - ../audio_files:/app/audio_files:ro
-      # Development: mount source code for live editing
-      - ../:/app:ro
+      - ./audio_files:/app/audio_files:ro
+      # Development: mount source code for live editing (optional)
+      # - ./:/app:ro
     
     # GPU support (requires nvidia-docker)
     deploy:
@@ -66,8 +66,8 @@ services:
   # CPU-only version for systems without GPU
   speaker-profiles-cpu:
     build: 
-      context: ..
-      dockerfile: docker/Dockerfile.cpu
+      context: .
+      dockerfile: Dockerfile.cpu
     image: speaker-profiles:cpu
     container_name: speaker-profiles-app-cpu
     profiles:
@@ -81,15 +81,16 @@ services:
       - SPEECHBRAIN_CACHE=/app/pretrained_models/speechbrain
     
     env_file:
-      - ../.env
+      - ./.env
     
     volumes:
-      - ../speakers:/app/speakers
-      - ../output:/app/output
-      - ../transcription_output:/app/transcription_output
-      - ../pretrained_models:/app/pretrained_models
-      - ../audio_files:/app/audio_files:ro
-      - ../:/app:ro
+      - ./speakers:/app/speakers
+      - ./output:/app/output
+      - ./transcription_output:/app/transcription_output
+      - ./pretrained_models:/app/pretrained_models
+      - ./audio_files:/app/audio_files:ro
+      # Development: mount source code for live editing (optional)
+      # - ./:/app:ro
     
     ports:
       - "8000:8000"

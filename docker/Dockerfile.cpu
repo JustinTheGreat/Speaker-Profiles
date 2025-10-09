@@ -27,7 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Copy minimal requirements for better Docker layer caching
-COPY docker/requirements-docker.txt ./
+COPY requirements-docker.txt ./
 
 # Install Python dependencies (excluding GPU-specific packages)
 RUN pip install --no-cache-dir -r requirements-docker.txt \
@@ -40,7 +40,8 @@ RUN mkdir -p /app/speakers \
     && mkdir -p /app/pretrained_models
 
 # Copy the application code
-COPY ../ .
+COPY requirements.txt ./
+COPY *.py ./
 
 # Create a non-root user for security
 RUN groupadd -r appuser && useradd -r -g appuser appuser \

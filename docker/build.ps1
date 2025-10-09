@@ -95,7 +95,7 @@ if ($BuildArg.Count -gt 0) {
 if ($BuildGpu) {
     Write-Status "Building GPU version..."
     
-    $buildCmd = "docker build $BuildArgString -t ${Tag}:latest -f Dockerfile .."
+    $buildCmd = "docker build $BuildArgString -t ${Tag}:latest -f Dockerfile ."
     Write-Status "Executing: $buildCmd"
     
     $result = Invoke-Expression $buildCmd
@@ -122,7 +122,7 @@ if ($BuildGpu) {
 if ($BuildCpu) {
     Write-Status "Building CPU version..."
     
-    $buildCmd = "docker build $BuildArgString -t ${Tag}:latest-cpu -f Dockerfile.cpu .."
+    $buildCmd = "docker build $BuildArgString -t ${Tag}:latest-cpu -f Dockerfile.cpu ."
     Write-Status "Executing: $buildCmd"
     
     $result = Invoke-Expression $buildCmd

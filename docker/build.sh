@@ -109,7 +109,7 @@ print_status "Tag prefix: $TAG_PREFIX"
 # Build GPU version
 if [ "$BUILD_GPU" = true ]; then
     print_status "Building GPU version..."
-    if docker build $BUILD_ARGS -t ${TAG_PREFIX}:latest -f Dockerfile ..; then
+    if docker build $BUILD_ARGS -t ${TAG_PREFIX}:latest -f Dockerfile .; then
         print_success "GPU version built successfully: ${TAG_PREFIX}:latest"
         
         if [ "$PUSH" = true ]; then
@@ -126,7 +126,7 @@ fi
 # Build CPU version
 if [ "$BUILD_CPU" = true ]; then
     print_status "Building CPU version..."
-    if docker build $BUILD_ARGS -t ${TAG_PREFIX}:latest-cpu -f Dockerfile.cpu ..; then
+    if docker build $BUILD_ARGS -t ${TAG_PREFIX}:latest-cpu -f Dockerfile.cpu .; then
         print_success "CPU version built successfully: ${TAG_PREFIX}:latest-cpu"
         
         if [ "$PUSH" = true ]; then

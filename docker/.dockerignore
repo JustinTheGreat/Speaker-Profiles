@@ -77,12 +77,17 @@ logs/
 ehthumbs.db
 Desktop.ini
 
-# Docker files (to avoid recursion)
-Dockerfile
-Dockerfile.cpu
-docker-compose.yml
-docker-compose.override.yml
-.dockerignore
+# Docker files (to avoid recursion) - but keep them for self-contained build
+# Dockerfile
+# Dockerfile.cpu
+# docker-compose.yml
+# docker-compose.override.yml
+# .dockerignore
+
+# Build and deployment scripts
+build.ps1
+build.sh
+run.sh
 
 # GitHub files
 .github/

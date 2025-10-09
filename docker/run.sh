@@ -105,21 +105,21 @@ if [ ! -f "docker-compose.yml" ]; then
     exit 1
 fi
 
-# Check if .env exists in parent directory
-if [ ! -f "../.env" ]; then
-    print_warning ".env file not found in parent directory"
-    if [ -f "../.env.template" ]; then
+# Check if .env exists in current directory
+if [ ! -f "./.env" ]; then
+    print_warning ".env file not found in current directory"
+    if [ -f "./.env.template" ]; then
         print_status "Creating .env from template..."
-        cp ../.env.template ../.env
-        print_warning "Please edit ../.env with your HUGGING_FACE_ACCESS_TOKEN"
+        cp ./.env.template ./.env
+        print_warning "Please edit ./.env with your HUGGING_FACE_ACCESS_TOKEN"
         echo ""
         echo "Required steps:"
         echo "1. Get token from: https://huggingface.co/settings/tokens"
-        echo "2. Edit ../.env and replace 'your_hugging_face_token_here' with your actual token"
+        echo "2. Edit ./.env and replace 'your_hugging_face_token_here' with your actual token"
         echo "3. Run this script again"
         exit 1
     else
-        print_error "No .env.template found. Please create ../.env manually"
+        print_error "No .env.template found. Please create ./.env manually"
         exit 1
     fi
 fi
